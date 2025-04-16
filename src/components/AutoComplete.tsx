@@ -1,197 +1,102 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Textfield } from "./Textfield";
-import { cn } from "@/lib/utils";
-import axios from "axios";
+import { useEffect, useRef, useState } from "react";
 
-interface Suggestion {
-  text: string;
-}
+export default function WriteWithMe() {
+  const [input, setInput] = useState("");
+  const [suggestion, setSuggestion] = useState("");
+  const [suggestedFor, setSuggestedFor] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
 
-const GeminiAutocomplete = () => {
-  const [inputText, setInputText] = useState("");
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
-  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const fetchSuggestion = async (text: string) => {
+    if (!text.trim()) {
+      setSuggestion("");
+      setSuggestedFor("");
+      return;
+    }
 
-  const inputRef = useRef<HTMLInputElement>(null);
-  const suggestionListRef = useRef<HTMLUListElement>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const justSelectedRef = useRef(false);
-
-  const fetchSuggestions = useCallback(async (text: string) => {
-    setIsLoading(true);
     try {
-      const response = await axios.get(
-        `/api/gemini-autocomplete?text=${encodeURIComponent(text)}`
-      );
-      const data = response.data;
-      setSuggestions(data.suggestions || []);
-      setIsSuggestionOpen((data.suggestions || []).length > 0);
-      setFocusedIndex(null);
-    } catch (error) {
-      console.error("Error fetching suggestions:", error);
-      setSuggestions([]);
-      setIsSuggestionOpen(false);
-    } finally {
-      setIsLoading(false);
+      const res = await fetch("/api/gemini-autocomplete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: text }),
+      });
+
+      const data = await res.json();
+      setSuggestion(data.suggestion || "");
+      setSuggestedFor(text);
+    } catch (err) {
+      console.error("Error fetching suggestion:", err);
+      setSuggestion("");
+      setSuggestedFor("");
     }
-  }, []);
-
-  useEffect(() => {
-    if (justSelectedRef.current) {
-      justSelectedRef.current = false;
-      return;
-    }
-
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-
-    if (inputText.trim() === "") {
-      setSuggestions([]);
-      setIsSuggestionOpen(false);
-      return;
-    }
-
-    typingTimeoutRef.current = setTimeout(() => {
-      fetchSuggestions(inputText);
-    }, 800);
-
-    return () => clearTimeout(typingTimeoutRef.current!);
-  }, [inputText, fetchSuggestions]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputText(e.target.value);
   };
 
-  const handleSelectSuggestion = (suggestion: string) => {
-    justSelectedRef.current = true;
-
-    const lastWordMatch = inputText.match(/(\S+)$/);
-    const lastWord = lastWordMatch ? lastWordMatch[0] : "";
-
-    const suggestionStartsWithLastWord = suggestion.startsWith(lastWord);
-
-    let completedText = "";
-
-    if (suggestionStartsWithLastWord) {
-      completedText = inputText.slice(0, -lastWord.length) + suggestion;
-    } else {
-      // Normal concatenation
-      completedText = inputText.trimEnd() + " " + suggestion.trimStart();
+  const resizeTextarea = () => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height =
+        textareaRef.current.scrollHeight + "px";
     }
-
-    setInputText(completedText);
-    setSuggestions([]);
-    setIsSuggestionOpen(false);
-
-    if (inputRef.current) inputRef.current.focus();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!isSuggestionOpen) return;
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setInput(value);
 
-    if (e.key === "ArrowDown") {
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
+    }
+
+    if (!value.startsWith(suggestedFor)) {
+      setSuggestion("");
+      setSuggestedFor("");
+    }
+
+    debounceTimeout.current = setTimeout(() => {
+      fetchSuggestion(value);
+    }, 400);
+  };
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const isAcceptKey = e.key === "Tab" || e.key === "Enter";
+
+    if (isAcceptKey && suggestion) {
       e.preventDefault();
-      setFocusedIndex((prev) =>
-        prev === null ? 0 : Math.min(prev + 1, suggestions.length - 1)
-      );
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setFocusedIndex((prev) =>
-        prev === null ? suggestions.length - 1 : Math.max(prev - 1, 0)
-      );
-    } else if (e.key === "Enter" && focusedIndex !== null) {
-      e.preventDefault();
-      handleSelectSuggestion(suggestions[focusedIndex].text);
-    } else if (e.key === "Escape") {
-      setIsSuggestionOpen(false);
-      setSuggestions([]);
-      setFocusedIndex(null);
+      setInput((prev) => prev + suggestion);
+      setSuggestion("");
+      setSuggestedFor("");
     }
   };
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        suggestionListRef.current &&
-        !suggestionListRef.current.contains(e.target as Node) &&
-        inputRef.current &&
-        !inputRef.current.contains(e.target as Node)
-      ) {
-        setIsSuggestionOpen(false);
-        setSuggestions([]);
-        setFocusedIndex(null);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    resizeTextarea();
+  }, [input]);
 
   return (
-    <div className="relative w-full max-w-md mx-auto">
-      <Textfield
-        type="text"
-        value={inputText}
-        onChange={handleInputChange}
-        onKeyDown={handleKeyDown}
-        placeholder="Type something..."
-        className="pr-10 text-black placeholder-gray-500"
-      />
-
-      {isLoading && (
-        <svg
-          className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 animate-spin text-gray-600"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
+    <div className="max-w-2xl mx-auto mt-10 p-6 bg-white rounded-xl shadow-sm">
+      <label className="block text-xl font-semibold mb-4 text-gray-800">
+        ✍️ Write with me
+      </label>
+      <div className="relative">
+        <div
+          className="absolute top-[1px] left-0 w-full text-gray-400 font-mono whitespace-pre-wrap break-words pointer-events-none p-3 leading-relaxed"
+          aria-hidden="true"
         >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
-      )}
+          <span className="invisible">{input}</span>
+          <span>{suggestion}</span>
+        </div>
 
-      <AnimatePresence>
-        {isSuggestionOpen && (
-          <motion.ul
-            ref={suggestionListRef}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg"
-          >
-            {suggestions.map((s, i) => (
-              <motion.li
-                key={s.text}
-                whileHover={{ backgroundColor: "#f3f4f6" }}
-                className={cn(
-                  "px-4 py-2 cursor-pointer text-gray-800 hover:bg-gray-100",
-                  i === focusedIndex && "bg-gray-200 font-semibold"
-                )}
-                onClick={() => handleSelectSuggestion(s.text)}
-              >
-                {s.text}
-              </motion.li>
-            ))}
-          </motion.ul>
-        )}
-      </AnimatePresence>
+        <textarea
+          ref={textareaRef}
+          value={input}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          rows={1}
+          className="w-full resize-none  p-3 pb-10 font-mono text-gray-900 bg-transparent border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-200 leading-relaxed"
+          placeholder="Start typing..."
+        />
+      </div>
     </div>
   );
-};
-
-export default GeminiAutocomplete;
+}
