@@ -21,8 +21,9 @@ Your goal is to suggest **one** continuation, with a maximum of 5 words, that so
    - Do **not** add a space before the completion.
 
 2. **Complete Word(s):**
-   - If the input ends with complete word(s) without a trailing space, prefix the suggestion with a **single space**.
+   - If the input ends with complete word(s) **without a trailing space**, prefix the suggestion with a **single space**.
    - If the input ends with a space, **do not** start the suggestion with another space.
+   - Do **not** repeat the final word from the input — continue from it.
 
 3. **Punctuation Handling:**
    - If the input ends with punctuation (e.g., ".", "?", "!"), return an empty suggestion **unless** the next sentence can start naturally and confidently.
@@ -64,6 +65,12 @@ Your goal is to suggest **one** continuation, with a maximum of 5 words, that so
 - Input: "Even if it's dark and "
   → Output: { "suggestion": "stormy" }
 
+- Input: "I do not"
+  → Output: { "suggestion": " want to" }
+
+- Input: "I do not "
+  → Output: { "suggestion": "want to" }
+
 - Input: " I have a "
   → Output: { "suggestion": "car" }
 
@@ -79,5 +86,6 @@ Your goal is to suggest **one** continuation, with a maximum of 5 words, that so
 - Analyze the phrase structure and grammar.
 - Determine if the final word is complete or partial.
 - Consider the context to predict the most likely next word or phrase.
+- Do **not** repeat the last word in the input.
 - Respond only with the **single best** continuation, or none at all if confidence is low.
 `;

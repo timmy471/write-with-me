@@ -1,13 +1,26 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+import { useRef, useState } from 'react';
 import { PulseLoader } from 'react-spinners';
-import { useEffect, useRef, useState } from 'react';
+import 'react-quill/dist/quill.snow.css';
+
+const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
+
+const editorModules = {
+  toolbar: [
+    ['bold', 'italic', 'underline'],
+    [{ header: [1, 2, 3, false] }],
+    [{ list: 'ordered' }, { list: 'bullet' }],
+    ['clean'], // Keep remove formatting
+  ],
+};
 
 export default function WriteWithMe() {
   const [input, setInput] = useState<string>('');
-  const [suggestion, setSuggestion] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [suggestion, setSuggestion] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const quillRef = useRef<any>(null);
   const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const fetchSuggestion = async (text: string) => {
@@ -33,80 +46,64 @@ export default function WriteWithMe() {
     }
   };
 
-  const resizeTextarea = () => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
-    }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    const cursorPosition = e.target.selectionStart;
-
-    setInput(value);
+  const handleChange = (_content: string, _delta: any, _source: string, editor: any) => {
+    const plainText = editor.getText().replace(/\n+$/, '');
+    setInput(plainText);
     setSuggestion('');
 
     if (debounceTimeout.current) {
       clearTimeout(debounceTimeout.current);
     }
 
-    // Only fetch suggestion if cursor is at the end
-    // feature
-    if (cursorPosition === value.length) {
-      debounceTimeout.current = setTimeout(() => {
-        fetchSuggestion(value);
-      }, 1000);
-    }
+    debounceTimeout.current = setTimeout(() => {
+      fetchSuggestion(plainText);
+    }, 1000);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    const isAcceptKey = e.key === 'Tab' || e.key === 'Enter';
-
-    if (isAcceptKey && suggestion) {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.key === 'Tab' || e.key === 'Enter') && suggestion) {
       e.preventDefault();
-      setInput((prev) => prev + suggestion);
-      setSuggestion('');
+      const editor = quillRef.current?.getEditor();
+
+      if (editor) {
+        editor.insertText(editor.getLength() - 1, suggestion);
+        setSuggestion('');
+      }
     }
   };
-
-  useEffect(() => {
-    resizeTextarea();
-  }, [input]);
 
   return (
-    <div className='mx-auto mt-10 p-6 bg-white rounded-xl shadow-sm'>
+    <div className='mx-auto mt-10 p-6 bg-white rounded-xl shadow-sm max-w-3xl'>
       <label className='block text-xl font-semibold mb-4 text-gray-800'>
         ✍️ Write with me
       </label>
-      <div className='relative'>
+      <div className='relative' onKeyDown={handleKeyDown}>
         <div
-          className='absolute top-[1px] left-0 w-full text-gray-400 font-mono whitespace-pre-wrap break-words pointer-events-none p-3 leading-relaxed'
+          className='absolute top-[80px] md:top-[54px] w-full whitespace-pre-wrap break-words pointer-events-none px-4 leading-relaxed'
           aria-hidden='true'>
-          <div className='inline-block'>
+          <div className='inline'>
             <span className='invisible'>{input}</span>
             <PulseLoader
               color={'gray'}
               loading={isLoading}
               size={4}
-              className='mt-[1px]'
               aria-label='Loading Spinner'
               data-testid='loader'
             />
-            <span>{suggestion}</span>
+            <span className='text-gray-400'>{suggestion}</span>
           </div>
         </div>
 
-        <textarea
-          ref={textareaRef}
-          value={input}
+        <ReactQuill
+          theme='snow'
           onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          rows={1}
-          className='w-full resize-none p-3 pb-14 md:pb-10 font-mono text-gray-900 bg-transparent border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-200 leading-relaxed'
-          placeholder='Start typing...'
+          placeholder="What's on your mind?"
+          modules={editorModules}
         />
       </div>
     </div>
   );
 }
+
+//Accept text
+//Take form
