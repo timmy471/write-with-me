@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useRef, useState } from 'react';
 import { PulseLoader } from 'react-spinners';
+import { useDebouncedCallback } from 'use-debounce';
 import 'react-quill/dist/quill.snow.css';
 
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
@@ -12,7 +13,7 @@ const editorModules = {
     ['bold', 'italic', 'underline'],
     [{ header: [1, 2, 3, false] }],
     [{ list: 'ordered' }, { list: 'bullet' }],
-    ['clean'], // Keep remove formatting
+    ['clean'],
   ],
 };
 
@@ -21,14 +22,15 @@ export default function WriteWithMe() {
   const [suggestion, setSuggestion] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const quillRef = useRef<any>(null);
-  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const fetchSuggestion = async (text: string) => {
     if (!text.trim()) {
       setSuggestion('');
       return;
     }
+
     setIsLoading(true);
+
     try {
       const res = await fetch('/api/gemini-autocomplete', {
         method: 'POST',
@@ -37,7 +39,14 @@ export default function WriteWithMe() {
       });
 
       const data = await res.json();
-      setSuggestion(data.suggestion || '');
+      let suggestionResponse = data.suggestion || '';
+
+      // If input ends with space and suggestion starts with space, remove one
+      //   if (text.endsWith(' ') && suggestionResponse.startsWith(' ')) {
+      //     suggestionResponse = suggestionResponse.trimStart();
+      //   }
+
+      setSuggestion(suggestionResponse);
     } catch (err) {
       console.error('Error fetching suggestion:', err);
       setSuggestion('');
@@ -46,28 +55,38 @@ export default function WriteWithMe() {
     }
   };
 
+  const debouncedFetchSuggestion = useDebouncedCallback(
+    (text: string) => fetchSuggestion(text),
+    1000
+  );
+
   const handleChange = (_content: string, _delta: any, _source: string, editor: any) => {
     const plainText = editor.getText().replace(/\n+$/, '');
     setInput(plainText);
-    setSuggestion('');
 
-    if (debounceTimeout.current) {
-      clearTimeout(debounceTimeout.current);
-    }
+    // setSuggestion('');
 
-    debounceTimeout.current = setTimeout(() => {
-      fetchSuggestion(plainText);
-    }, 1000);
+    debouncedFetchSuggestion(plainText);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.key === 'Tab' || e.key === 'Enter') && suggestion) {
+    if (e.key === 'Tab') {
       e.preventDefault();
-      const editor = quillRef.current?.getEditor();
+      console.log('PREVENTING');
+
+      if (!quillRef.current) {
+        console.log('Editor not loaded');
+        return;
+      }
+
+      const editor = quillRef.current.getEditor();
 
       if (editor) {
-        editor.insertText(editor.getLength() - 1, suggestion);
+        const length = editor.getLength();
+        console.log(suggestion);
+        editor.insertText(length - 1, suggestion);
         setSuggestion('');
+        debouncedFetchSuggestion.cancel();
       }
     }
   };
@@ -77,7 +96,7 @@ export default function WriteWithMe() {
       <label className='block text-xl font-semibold mb-4 text-gray-800'>
         ✍️ Write with me
       </label>
-      <div className='relative' onKeyDown={handleKeyDown}>
+      <div className='relative'>
         <div
           className='absolute top-[80px] md:top-[54px] w-full whitespace-pre-wrap break-words pointer-events-none px-4 leading-relaxed'
           aria-hidden='true'>
@@ -95,7 +114,11 @@ export default function WriteWithMe() {
         </div>
 
         <ReactQuill
+          ref={quillRef}
           theme='snow'
+          onKeyDown={handleKeyDown}
+          //   onKeyUp={handleKeyDown}
+          //   onKeyPress={handleKeyDown}
           onChange={handleChange}
           placeholder="What's on your mind?"
           modules={editorModules}
@@ -104,6 +127,3 @@ export default function WriteWithMe() {
     </div>
   );
 }
-
-//Accept text
-//Take form

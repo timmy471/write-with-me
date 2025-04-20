@@ -10,6 +10,9 @@
   },
   "dependencies": {
     "@google/genai": "^0.8.0",
+    "@tiptap/extension-placeholder": "^2.11.7",
+    "@tiptap/react": "^2.11.7",
+    "@tiptap/starter-kit": "^2.11.7",
     "axios": "^1.8.4",
     "framer-motion": "^12.6.5",
     "loadash": "^1.0.0",
