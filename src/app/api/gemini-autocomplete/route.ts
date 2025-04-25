@@ -25,6 +25,11 @@ export async function POST(req: Request) {
     const result = await genAI.models.generateContent({
       model: "gemini-1.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
+        temperature: 0.7,
+        topP: 0.85,
+        maxOutputTokens: 100,
+      },
     });
 
     const raw = result?.candidates?.[0]?.content?.parts?.[0]?.text || "";
